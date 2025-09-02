@@ -105,13 +105,7 @@ function downloadInvoicePDF(invoice, companyName = 'Saleem Trading Company') {
   const total = computeTotal(invoice.items || []);
   doc.setFont('times', 'bold');
   doc.setFontSize(12);
-  doc.text(`Grand Total: `, 194 - margin, afterTableY + 10, {
-    align: 'right',
-  });
-
-  doc.setFont('times', 'normal');
-
-  doc.text(`${currency(total)}`, 209 - margin, afterTableY + 10, {
+  doc.text(`Grand Total: ${currency(total)}`, 210 - margin, afterTableY + 10, {
     align: 'right',
   });
 
