@@ -12,7 +12,10 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
  * - Set your backend API base URL here. In dev, keep localhost.
  * - In prod (Vercel), point to your deployed Express URL, e.g. https://api.yourdomain.com
  */
-const BACKEND_URL = (typeof window !== 'undefined' && window.__BACKEND_URL__) || "http://localhost:8000/api";
+const BACKEND_URL =
+  import.meta.env.MODE === "development"
+    ? "http://localhost:8000/api" // local backend
+    : "https://invoice-generator-fyao.onrender.com/api"; // deployed backend
 
 // ------- Utilities -------
 const currency = (n) => {
