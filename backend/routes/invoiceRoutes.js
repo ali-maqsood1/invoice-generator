@@ -52,6 +52,33 @@ router.post("/", async (req, res) => {
   }
 });
 
+// PUT update invoice
+router.put("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customer_name, customer_phone, items, canceled } = req.body;
+
+    const total = items ? items.reduce((sum, i) => sum + i.qty * i.price, 0) : undefined;
+
+    const updateFields = {
+      ...(customer_name !== undefined && { customer_name }),
+      ...(customer_phone !== undefined && { customer_phone }),
+      ...(items !== undefined && { items, total }),
+      ...(canceled !== undefined && { canceled }),
+    };
+
+    const updatedInvoice = await Invoice.findByIdAndUpdate(id, updateFields, { new: true });
+    if (!updatedInvoice) return res.status(404).json({ message: "Invoice not found" });
+
+    res.json(updatedInvoice);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
 // DELETE invoice by ID
 router.delete("/:id", async (req, res) => {
   try {

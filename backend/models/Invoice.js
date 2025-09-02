@@ -12,6 +12,7 @@ const invoiceSchema = new mongoose.Schema({
     }
   ],
   total: Number,
+  canceled: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now }
 });
 
