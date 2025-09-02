@@ -15,7 +15,7 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 const BACKEND_URL =
   import.meta.env.MODE === "development"
     ? "http://localhost:8000/api" // local backend
-    : "https://invoice-generator-fyao.onrender.com/api"; // deployed backend
+    : "/api"; // deployed backend
 
 // ------- Utilities -------
 const currency = (n) => {
