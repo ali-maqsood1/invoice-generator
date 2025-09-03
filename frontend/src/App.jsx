@@ -7,8 +7,14 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
-import { Download, Trash2, Edit2, XCircle } from "lucide-react";
-
+import {
+  Download,
+  Trash2,
+  Edit2,
+  XCircle,
+  CheckCircle,
+  Filter,
+} from 'lucide-react';
 
 /**
  * 🔧 QUICK CONFIG
@@ -463,7 +469,9 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [canceledInvoices, setCanceledInvoices] = useState(new Set());
+  const [filter, setFilter] = useState('all'); // all, collected, canceled, recent
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+
   const navigate = useNavigate();
   const companyName = 'Saleem Trading Company';
 
@@ -483,13 +491,24 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
     })();
   }, [password, refreshKey]);
 
-  const filtered = list.filter(
-    (inv) =>
-      String(inv.invoice_number ?? '')
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      inv.customer_name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = list
+    .filter(
+      (inv) =>
+        String(inv.invoice_number ?? '')
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        inv.customer_name?.toLowerCase().includes(search.toLowerCase())
+    )
+    .filter((inv) => {
+      if (filter === 'collected') return inv.collected;
+      if (filter === 'canceled') return inv.canceled;
+      if (filter === 'recent') {
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        return new Date(inv.created_at) >= oneMonthAgo;
+      }
+      return true; // "all"
+    });
 
   async function handleCancelInvoice(id) {
     try {
@@ -498,6 +517,16 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
       toast.success('Invoice has been canceled.');
     } catch (e) {
       toast.error(e.message || 'Failed to cancel invoice.');
+    }
+  }
+
+  async function handleCollectedInvoice(id) {
+    try {
+      await apiPut(`/invoices/${id}`, password, { collected: true });
+      onDeleted?.(); // refresh logs
+      toast.success('Invoice has been collected!');
+    } catch (e) {
+      toast.error(e.message || 'Failed to collect invoice.');
     }
   }
 
@@ -561,6 +590,7 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
       'Price',
       'Sub Total',
       'Grand Total',
+      'Collected',
     ]);
 
     // Style header
@@ -584,8 +614,6 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
       (a, b) => new Date(a.created_at) - new Date(b.created_at)
     );
 
-    let rowNumber = 2;
-
     for (const inv of sortedInvoices) {
       const items = inv.items || [];
       items.forEach((item) => {
@@ -599,15 +627,15 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
           item.price,
           (item.qty || 0) * (item.price || 0),
           inv.total,
+          inv.collected ? '             Yes' : '             No',
         ]);
 
-        // Color canceled rows red
         if (inv.canceled) {
           row.eachCell((cell) => {
             cell.fill = {
               type: 'pattern',
               pattern: 'solid',
-              fgColor: { argb: 'FFFFCCCC' }, // light red
+              fgColor: { argb: 'FFFFCCCC' },
             };
           });
         }
@@ -654,6 +682,65 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
           onChange={(e) => setSearch(e.target.value)}
         />
 
+        <div className='relative'>
+          <button
+            onClick={() => setShowFilterMenu((prev) => !prev)}
+            className='px-3 py-2 rounded-lg border bg-gray-200 hover:bg-gray-300 flex items-center gap-1'
+          >
+            <Filter className='w-4 h-4' />
+            <span className='hidden sm:inline'>Filter</span>
+          </button>
+
+          {showFilterMenu && (
+            <div className='absolute right-0 mt-2 w-40 bg-white shadow-lg rounded-lg border z-50'>
+              <button
+                onClick={() => {
+                  setFilter('all');
+                  setShowFilterMenu(false);
+                }}
+                className={`block w-full text-left px-4 py-2 hover:bg-gray-100 ${
+                  filter === 'all' ? 'bg-gray-100 font-semibold' : ''
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => {
+                  setFilter('collected');
+                  setShowFilterMenu(false);
+                }}
+                className={`block w-full text-left px-4 py-2 hover:bg-gray-100 ${
+                  filter === 'collected' ? 'bg-gray-100 font-semibold' : ''
+                }`}
+              >
+                Collected
+              </button>
+              <button
+                onClick={() => {
+                  setFilter('canceled');
+                  setShowFilterMenu(false);
+                }}
+                className={`block w-full text-left px-4 py-2 hover:bg-gray-100 ${
+                  filter === 'canceled' ? 'bg-gray-100 font-semibold' : ''
+                }`}
+              >
+                Canceled
+              </button>
+              <button
+                onClick={() => {
+                  setFilter('recent');
+                  setShowFilterMenu(false);
+                }}
+                className={`block w-full text-left px-4 py-2 hover:bg-gray-100 ${
+                  filter === 'recent' ? 'bg-gray-100 font-semibold' : ''
+                }`}
+              >
+                Recent (1 month)
+              </button>
+            </div>
+          )}
+        </div>
+
         <button
           onClick={generateExcelSummary}
           className='px-3 py-1 rounded-lg border bg-green-500 text-white hover:bg-green-600 cursor-pointer'
@@ -688,17 +775,17 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
                 key={inv._id || inv.invoice_number}
                 className={`border-b last:border-b-0 ${
                   inv.canceled ? 'bg-red-100 opacity-80' : ''
-                }`}
+                } ${inv.collected ? 'bg-green-100 opacity-80' : ''}`}
               >
-                <td className='py-4'>{inv.invoice_number}</td>
-                <td className='py-4'>{inv.customer_name}</td>
-                <td className='py-4'>{inv.customer_phone}</td>
-                <td className='py-4'>{currency(inv.total)}</td>
-                <td className='py-4'>
+                <td className='py-5 px-3'>{inv.invoice_number}</td>
+                <td className='py-5 px-3'>{inv.customer_name}</td>
+                <td className='py-5 px-3'>{inv.customer_phone}</td>
+                <td className='py-5 px-3'>{currency(inv.total)}</td>
+                <td className='py-5 px-3'>
                   {new Date(inv.created_at).toLocaleString()}
                 </td>
-                <td className='py-4'>
-                  <div className='flex flex-wrap sm:flex-nowrap gap-2 justify-start sm:justify-end'>
+                <td className='py-5 px-2'>
+                  <div className='flex flex-wrap gap-3 justify-start sm:justify-end'>
                     {/* Download */}
                     <button
                       className='flex items-center gap-1 px-3 py-2 rounded-lg border bg-blue-500 text-white hover:bg-blue-600'
@@ -717,7 +804,7 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
                       <span className='hidden sm:inline'>Delete</span>
                     </button>
 
-                    {!inv.canceled && (
+                    {!inv.canceled && !inv.collected && (
                       <>
                         {/* Edit */}
                         <button
@@ -735,6 +822,14 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
                         >
                           <XCircle className='w-4 h-4 sm:w-auto sm:h-auto' />
                           <span className='hidden sm:inline'>Cancel</span>
+                        </button>
+
+                        <button
+                          className='flex items-center gap-1 px-3 py-2 rounded-lg border bg-green-500 text-white hover:bg-green-600'
+                          onClick={() => handleCollectedInvoice(inv._id)}
+                        >
+                          <CheckCircle className='w-4 h-4 sm:w-auto sm:h-auto' />
+                          <span className='hidden sm:inline'>Collect</span>
                         </button>
                       </>
                     )}
@@ -762,7 +857,7 @@ export default function InvoiceApp() {
         </>
       ) : (
         <>
-          <div className='min-h-screen bg-gray-100 p-6'>
+          <div className='bg-gray-100 p-6'>
             <div className='max-w-5xl mx-auto space-y-6'>
               <header className='flex items-center gap-3'>
                 <h1 className='text-2xl font-semibold'>Invoice Generator</h1>
@@ -782,20 +877,26 @@ export default function InvoiceApp() {
                 <Route
                   path='/'
                   element={
-                    <InvoiceForm
-                      password={password}
-                      onCreated={() => setRefreshKey((k) => k + 1)}
-                    />
+                    <div className='max-w-5xl mx-auto space-y-6'>
+                      <InvoiceForm
+                        password={password}
+                        onCreated={() => setRefreshKey((k) => k + 1)}
+                      />
+                    </div>
                   }
                 />
                 <Route
                   path='/logs'
                   element={
-                    <InvoiceLog
-                      password={password}
-                      refreshKey={refreshKey}
-                      onDeleted={() => setRefreshKey((k) => k + 1)}
-                    />
+                    <div className='space-y-6'>
+                      {' '}
+                      {/* full width, no max-w */}
+                      <InvoiceLog
+                        password={password}
+                        refreshKey={refreshKey}
+                        onDeleted={() => setRefreshKey((k) => k + 1)}
+                      />
+                    </div>
                   }
                 />
               </Routes>

@@ -56,7 +56,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { customer_name, customer_phone, items, canceled } = req.body;
+    const { customer_name, customer_phone, items, canceled, collected } = req.body;
 
     const total = items ? items.reduce((sum, i) => sum + i.qty * i.price, 0) : undefined;
 
@@ -65,6 +65,7 @@ router.put("/:id", async (req, res) => {
       ...(customer_phone !== undefined && { customer_phone }),
       ...(items !== undefined && { items, total }),
       ...(canceled !== undefined && { canceled }),
+      ...(collected !== undefined && { collected }),
     };
 
     const updatedInvoice = await Invoice.findByIdAndUpdate(id, updateFields, { new: true });
