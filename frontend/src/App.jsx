@@ -15,6 +15,9 @@ import {
   CheckCircle,
   Filter,
 } from 'lucide-react';
+import SummaryBar from './components/SummaryBar';
+import DateRangeFilter from './components/DateRangeFilter';
+import BulkActions from './components/BulkActions';
 
 /**
  * 🔧 QUICK CONFIG
@@ -47,9 +50,9 @@ function downloadInvoicePDF(invoice, companyName = 'Saleem Trading Company') {
   let y = margin;
 
   // ====== COMPANY HEADING ======
-  doc.setFont('times', 'bold'); // bold for company name
+  doc.setFont('times', 'bold');
   doc.setFontSize(24);
-  doc.setTextColor(0, 0, 128); // dark blue
+  doc.setTextColor(0, 0, 128);
   doc.text(companyName.toUpperCase(), 105, y, { align: 'center' });
   y += 12;
 
@@ -63,12 +66,10 @@ function downloadInvoicePDF(invoice, companyName = 'Saleem Trading Company') {
   doc.setFont('times', 'normal');
   doc.setFontSize(12);
 
-  /// Left: Customer
   doc.text(`Customer Name: ${invoice.customer_name || '-'}`, margin, y);
   y += 6;
   doc.text(`Phone No: ${invoice.customer_phone || '-'}`, margin, y);
 
-  // Right: Invoice number & date
   y -= 6;
   doc.text(`Invoice No: ${invoice.invoice_number ?? '(pending)'}`, 135, y);
   y += 6;
@@ -93,29 +94,35 @@ function downloadInvoicePDF(invoice, companyName = 'Saleem Trading Company') {
     startY: y,
     head: [['Sr.', 'Description', 'Qty', 'Price', 'Total']],
     body: rows,
-    theme: 'grid', // adds lines between rows/columns
+    theme: 'grid',
     styles: { font: 'times', fontSize: 11, cellPadding: 3 },
     headStyles: { fillColor: [0, 0, 0], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 14, halign: 'center' },
-      2: { halign: 'left', cellWidth: 20 },
-      3: { halign: 'left', cellWidth: 25 },
-      4: { halign: 'left', cellWidth: 30 },
-    },
     margin: { left: margin, right: margin },
   });
 
   const afterTableY = doc.lastAutoTable?.finalY || y;
 
-  // ====== TOTAL ======
-  const total = computeTotal(invoice.items || []);
+  // ====== TOTALS ======
+  const subtotal = invoice.total || computeTotal(invoice.items || []);
+  const advance = Number(invoice.advance) || 0;
+  const grandTotal = invoice.grand_total ?? subtotal - advance;
+
   doc.setFont('times', 'bold');
   doc.setFontSize(12);
-  doc.text(`Grand Total: ${currency(total)}`, 210 - margin, afterTableY + 10, {
+
+  doc.text(`Subtotal: ${currency(subtotal)}`, 210 - margin, afterTableY + 10, {
     align: 'right',
   });
+  doc.text(`Advance: ${currency(advance)}`, 210 - margin, afterTableY + 16, {
+    align: 'right',
+  });
+  doc.text(
+    `Grand Total: ${currency(grandTotal)}`,
+    210 - margin,
+    afterTableY + 24,
+    { align: 'right' }
+  );
 
-  // ====== SAVE PDF ======
   doc.save(`Invoice-${invoice.invoice_number ?? 'draft'}.pdf`);
 }
 
@@ -339,8 +346,11 @@ function InvoiceForm({ password, onCreated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+  // add advance state
+  const [advance, setAdvance] = useState(0);
 
   const total = useMemo(() => computeTotal(items), [items]);
+  const grandTotal = total - (Number(advance) || 0);
 
   // Pre-fill form if editing
   useEffect(() => {
@@ -350,6 +360,7 @@ function InvoiceForm({ password, onCreated }) {
       setCustomerPhone(invoice.customer_phone || '');
       setItems(invoice.items || [{ description: '', qty: 0, price: 0 }]);
       setEditingInvoiceId(invoice._id);
+      setAdvance(invoice.advance || 0);
       // Clear state to avoid auto-fill next navigation
       navigate('/', { replace: true, state: {} });
     }
@@ -374,6 +385,9 @@ function InvoiceForm({ password, onCreated }) {
             qty: Number(it.qty) || 0,
             price: Number(it.price) || 0,
           })),
+        advance: Number(advance) || 0,
+        total, // subtotal
+        grand_total: grandTotal, // after subtracting advance
       };
 
       let invoice;
@@ -390,13 +404,14 @@ function InvoiceForm({ password, onCreated }) {
       }
 
       // Generate & download PDF
-      downloadInvoicePDF(invoice, companyName);
+      downloadInvoicePDF({ ...invoice, advance }, companyName);
 
       // Reset form
       setCustomerName('');
       setCustomerPhone('');
       setItems([{ description: '', qty: 0, price: 0 }]);
       setEditingInvoiceId(null);
+      setAdvance(0);
 
       onCreated?.(invoice);
     } catch (e) {
@@ -447,7 +462,32 @@ function InvoiceForm({ password, onCreated }) {
             ? 'Save Changes'
             : 'Generate & Download PDF'}
         </button>
-        <div className='ml-auto font-semibold'>Total: {currency(total)}</div>
+        {/* Advance input */}
+        <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
+          <div className='col-span-2'></div>
+          <div>
+            <label className='block text-sm font-medium mb-1'>
+              Advance Received
+            </label>
+            <input
+              type='number'
+              min='0'
+              step='0.01'
+              className='w-full border rounded-xl p-3 text-right'
+              value={advance}
+              onChange={(e) => setAdvance(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Totals */}
+        <div className='text-right space-y-1'>
+          <div className='font-medium'>Subtotal: {currency(total)}</div>
+          <div className='font-medium'>Advance: {currency(advance)}</div>
+          <div className='font-bold text-lg'>
+            Grand Total: {currency(grandTotal)}
+          </div>
+        </div>
       </div>
 
       {error && <p className='text-red-600 text-sm'>{error}</p>}
@@ -471,6 +511,8 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all'); // all, collected, canceled, recent
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [dateRange, setDateRange] = useState({ from: '', to: '' });
+  const [selectedInvoices, setSelectedInvoices] = useState([]);
 
   const navigate = useNavigate();
   const companyName = 'Saleem Trading Company';
@@ -508,7 +550,52 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
         return new Date(inv.created_at) >= oneMonthAgo;
       }
       return true; // "all"
+    })
+    .filter((inv) => {
+      const { from, to } = dateRange || {};
+      if (!from && !to) return true;
+
+      const created = new Date(inv.created_at);
+      if (Number.isNaN(created)) return false;
+      let fromDate = from ? new Date(from + 'T00:00:00') : null;
+      let toDate = to ? new Date(to + 'T23:59:59.999') : null;
+      if (fromDate && toDate && fromDate > toDate) {
+        const tmp = fromDate;
+        fromDate = toDate;
+        toDate = tmp;
+      }
+
+      if (fromDate && created < fromDate) return false;
+      if (toDate && created > toDate) return false;
+      return true;
     });
+
+  async function handleBulkDelete() {
+    for (const id of selectedInvoices) {
+      await apiDelete(`/invoices/${id}`, password);
+    }
+    setSelectedInvoices([]);
+    onDeleted?.();
+    toast.success('Selected invoices deleted.');
+  }
+
+  async function handleBulkCancel() {
+    for (const id of selectedInvoices) {
+      await apiPut(`/invoices/${id}`, password, { canceled: true });
+    }
+    setSelectedInvoices([]);
+    onDeleted?.();
+    toast.success('Selected invoices canceled.');
+  }
+
+  async function handleBulkCollect() {
+    for (const id of selectedInvoices) {
+      await apiPut(`/invoices/${id}`, password, { collected: true });
+    }
+    setSelectedInvoices([]);
+    onDeleted?.();
+    toast.success('Selected invoices marked collected.');
+  }
 
   async function handleCancelInvoice(id) {
     try {
@@ -588,7 +675,8 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
       'Description',
       'Qty',
       'Price',
-      'Sub Total',
+      'Subtotal',
+      'Advance',
       'Grand Total',
       'Collected',
     ]);
@@ -626,7 +714,8 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
           item.qty,
           item.price,
           (item.qty || 0) * (item.price || 0),
-          inv.total,
+          inv.advance || 0, 
+          inv.grand_total ?? inv.total - (inv.advance || 0), 
           inv.collected ? '             Yes' : '             No',
         ]);
 
@@ -757,16 +846,29 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
         <div className='text-sm text-gray-500'>{list.length} total</div>
       </div>
 
+      {/* --- NEW: Summary & Filters --- */}
+      <SummaryBar invoices={list} />
+      <DateRangeFilter
+        value={dateRange}
+        onChange={(range) => setDateRange(range)}
+      />
+      <BulkActions
+        selected={selectedInvoices}
+        onDelete={handleBulkDelete}
+        onCancel={handleBulkCancel}
+        onCollect={handleBulkCollect}
+      />
+
       <div className='overflow-x-auto'>
         <table className='w-full text-sm border-collapse'>
           <thead>
             <tr className='text-left border-b'>
-              <th className='py-3 pr-3'>Invoice #</th>
-              <th className='py-3 pr-3'>Customer</th>
-              <th className='py-3 pr-3'>Phone</th>
-              <th className='py-3 pr-3'>Total</th>
-              <th className='py-3 pr-3'>Date & Time</th>
-              <th className='py-3 pr-3 w-48'>Actions</th>
+              <th className='py-3 pr-3 text-xl'>Invoice #</th>
+              <th className='py-3 pr-3 text-xl'>Customer</th>
+              <th className='py-3 pr-3 text-xl'>Phone</th>
+              <th className='py-3 pr-3 text-xl'>Grand Total</th>
+              <th className='py-3 pr-3 text-xl'>Date & Time</th>
+              <th className='py-3 pr-3 w-48 text-xl'>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -777,14 +879,27 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
                   inv.canceled ? 'bg-red-100 opacity-80' : ''
                 } ${inv.collected ? 'bg-green-100 opacity-80' : ''}`}
               >
-                <td className='py-5 px-3'>{inv.invoice_number}</td>
-                <td className='py-5 px-3'>{inv.customer_name}</td>
-                <td className='py-5 px-3'>{inv.customer_phone}</td>
-                <td className='py-5 px-3'>{currency(inv.total)}</td>
-                <td className='py-5 px-3'>
+                <td className='py-5 px-3 font-bold'>{inv.invoice_number}</td>
+                <td className='py-5 px-3 font-bold'>{inv.customer_name}</td>
+                <td className='py-5 px-3 font-bold'>{inv.customer_phone}</td>
+                <td className='py-5 px-3 font-bold'>{currency(inv.grand_total ?? (inv.total - (inv.advance || 0)))}</td>
+                <td className='py-5 px-3 font-bold'>
                   {new Date(inv.created_at).toLocaleString()}
                 </td>
                 <td className='py-5 px-2'>
+                  <input
+                    type='checkbox'
+                    checked={selectedInvoices.includes(inv._id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedInvoices([...selectedInvoices, inv._id]);
+                      } else {
+                        setSelectedInvoices(
+                          selectedInvoices.filter((id) => id !== inv._id)
+                        );
+                      }
+                    }}
+                  />
                   <div className='flex flex-wrap gap-3 justify-start sm:justify-end'>
                     {/* Download */}
                     <button

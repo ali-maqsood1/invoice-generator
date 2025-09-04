@@ -29,7 +29,7 @@ router.get("/", async (req, res) => {
 // POST new invoice
 router.post("/", async (req, res) => {
   try {
-    const { customer_name, customer_phone, items } = req.body;
+    const { customer_name, customer_phone, items, advance = 0 } = req.body;
 
     // Format invoice number like "INV-00001"
     const formattedInvoiceNumber = await getNextInvoiceNumber();
@@ -41,11 +41,12 @@ router.post("/", async (req, res) => {
       customer_name,
       customer_phone,
       items,
-      total
+      total,
+      advance
     });
 
     await invoice.save();
-    res.json(invoice);
+    res.json(invoice.toJSON()); 
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
@@ -56,7 +57,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { customer_name, customer_phone, items, canceled, collected } = req.body;
+    const { customer_name, customer_phone, items, canceled, collected, advance } = req.body;
 
     const total = items ? items.reduce((sum, i) => sum + i.qty * i.price, 0) : undefined;
 
@@ -66,18 +67,18 @@ router.put("/:id", async (req, res) => {
       ...(items !== undefined && { items, total }),
       ...(canceled !== undefined && { canceled }),
       ...(collected !== undefined && { collected }),
+      ...(advance !== undefined && { advance })
     };
 
     const updatedInvoice = await Invoice.findByIdAndUpdate(id, updateFields, { new: true });
     if (!updatedInvoice) return res.status(404).json({ message: "Invoice not found" });
 
-    res.json(updatedInvoice);
+    res.json(updatedInvoice.toJSON()); // includes grand_total
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 
 // DELETE invoice by ID
