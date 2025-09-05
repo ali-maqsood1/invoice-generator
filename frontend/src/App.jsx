@@ -598,6 +598,8 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
   }
 
   async function handleCancelInvoice(id) {
+    if (!window.confirm('Are you sure you want to cancel this invoice?'))
+      return;
     try {
       await apiPut(`/invoices/${id}`, password, { canceled: true });
       onDeleted?.(); // refresh logs
@@ -608,6 +610,8 @@ function InvoiceLog({ password, refreshKey, onDeleted }) {
   }
 
   async function handleCollectedInvoice(id) {
+    if (!window.confirm('Are you sure you want to collect this invoice?'))
+      return;
     try {
       await apiPut(`/invoices/${id}`, password, { collected: true });
       onDeleted?.(); // refresh logs
